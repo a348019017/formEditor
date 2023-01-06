@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: cesium/vectorTileProvider.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: cesium/vectorTileProvider.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import { handlegeojsontoprimitive } from "./styles/handlepolygonstyle";
+/**
+ * 提供 GeoJSON 矢量切片渲染服务
+ *
+ * @param {Object} options 选项
+ * @param {Object} Cesium Cesium 对象
+ * @param {String} options.url 瓦片服务 URL
+ * @param {Object} [options.urlParams] 瓦片服务参数
+ * &lt;ul>
+ *   &lt;li>{x} 瓦片 X 坐标&lt;/li>
+ *   &lt;li>{y} 瓦片 Y 坐标 &lt;/li>
+ *   &lt;li>{z} 瓦片等级&lt;/li>
+ * &lt;/ul>
+ * @param {Rectangle} options.Rectangle 瓦片数据范围
+ * @param {TilingScheme} [options.tilingScheme=Cesium.GeoGraphicTilingScheme]
+ * @param {Number} [options.minimumLevel=1] 瓦片数据的最低等级
+ * @param {Number} [options.lowerLevelLimit=1] 在特定视角下允许的最低层级(低于此等级不渲染)
+ * @param {Number} [options.maximumLevel=19] 瓦片数据的最高等级
+ * @param {Number} [options.upperLevelLimit] 在特定视角下允许的最高层级(高于此等级将向下合并)
+ *
+ * @example
+ * // 创建 provider
+ * const provider = new GeoJSONVectorTileProvider({
+ *   url: 'http://localhost:8080/geoserver/gwc/service/wmts',
+ *   urlParams: {
+ *      REQUEST: 'GetTile',
+ *      SERVICE: 'WMTS',
+ *      VERSION: '1.0.0',
+ *      LAYER: 'cesium:buildings',
+ *      STYLE: '',
+ *      FORMAT: 'application/json',
+ *      TILEMATRIXSET: 'EPSG:4326',
+ *      TILEMATRIX: 'EPSG:4326:{z}',
+ *      TILECOL: '{x}',
+ *      TILEROW: '{y}'
+ *   },
+ *   upperLevelLimit: 15,
+ *   lowerLevelLimit: 10,
+ *   rectangle: Cesium.Rectangle.fromDegrees(70, 4, 120, 20)
+ * })
+ *
+ * // 添加至地图
+ * provider.addTo(viewer)
+ *
+ * // 移除 provider
+ * provider.remove()
+ *
+ * // 过滤 house_id 属性
+ * provider.filterBy('house_id', ['hn_fw_czdjfw_1955708'])
+ *
+ * // 移除属性过滤
+ * provider.removeFilter()
+ *
+ * @changelog
+ * [feat: 允许设置可选的最高层级以优化瓦片加载]
+ * [feat: 缓存一上视角位置的瓦片数据]
+ * [chore: 不渲染距离过远的瓦片]
+ * [feat: 允许过滤数据]
+ * [feat: 模型物高度适应地形]
+ * [chore: 坐标转换(WGS84 -> GCJ02)]
+ * [feat: 添加 MultiPolygon 支持]
+ * [initial support]
+ *
+ * @author lankinglin &lt;lankinglin@gmail.com>
+ * 这处理多少是存在问题的，1 设置cache缓存primitives  2 按需cache中取数据，这里可以不用取了 3 释放问题级别高的替换级别低的
+ *并没有继承provider，而是直接attachtoviewer
+ * @constructor
+ */
+
+function GeoJSONVectorTileProvider(options) {
+  // Cesium.Viewer 实例
+  this._viewer = null;
+
+  // Cesium 对象
+  this._Cesium = Cesium;
+
+  // 矢量切片服务接口请求参数这里我们采用templateurl
+  //this._urlParams = options.urlParams;
+
+  // 矢量切片服务 URL 模板
+  this._urlTemplate = options.url;
+
+  // 矢量切片服务数据范围,如果没指定就是全球
+  this._rectangle = options.rectangle
+    ? Cesium.Rectangle.fromDegrees(
+      options.rectangle.west,
+      options.rectangle.south,
+      options.rectangle.east,
+      options.rectangle.north
+    )
+    : Cesium.Rectangle.fromDegrees(-180, -90, 180, 90);
+
+  // 最大视图等级，这里设置的是可请求的level，而实际渲染待定，先测试把
+  this._maximumLevel = options.maximumLevel || 15;
+
+  // 最小视图等级
+  this._minimumLevel = options.minimumLevel || 11;
+
+  // Cesium.TilingScheme 实例
+  this._tilingScheme =
+    options.tilingScheme || new this._Cesium.GeographicTilingScheme();
+
+  // 瓦片范围，以 level 索引
+  this._tileRangeByLevel = {};
+
+  // 摄像机 moveEnd 事件时间戳
+  this._moveEndTimestamp = null;
+
+  // provider 是否已销毁
+  this._isRemoved = false;
+
+  // 摄像机是否正在移动,移动时不操作
+  this._isCameraMoving = false;
+
+  // 将被过滤的属性和值
+  this._propertyToBeFiltered = null;
+  this._valuesToBeFiltered = null;
+
+  // 瓦片 primitive，以 tile key 索引
+  this._primitiveByTile = {};
+
+  // 最新视角下的瓦片标识列表
+  this._tileKeys = [];
+
+  //图层的配置文件
+  this._element = options;
+
+  this._cameraMoveEndHandler = this._cameraMoveEndHandler.bind(this);
+  this._cameraMoveStartHandler = this._cameraMoveStartHandler.bind(this);
+
+  // 高度属性，以 id 索引
+  this.heightById = {};
+
+  // 计算瓦片范围,这个相当于内部进行一次过滤，有助于提高实际性能
+  const west = this._radianToDegree(this._rectangle.west);
+  const south = this._radianToDegree(this._rectangle.south);
+  const east = this._radianToDegree(this._rectangle.east);
+  const north = this._radianToDegree(this._rectangle.north);
+
+  for (let z = this._minimumLevel; z &lt;= this._maximumLevel; z++) {
+    const bottomLeftTile = this._lonLatToTileInWGS84([west, south], z);
+    const topRightTile = this._lonLatToTileInWGS84([east, north], z);
+    const minRow = Math.min(bottomLeftTile[0], topRightTile[0]);
+    const maxRow = Math.max(bottomLeftTile[0], topRightTile[0]);
+    const minCol = Math.min(bottomLeftTile[1], topRightTile[1]);
+    const maxCol = Math.max(bottomLeftTile[1], topRightTile[1]);
+
+    this._tileRangeByLevel[z] = { minCol, maxCol, minRow, maxRow };
+  }
+
+  this._tileRangeByLevel[0] = { minCol: 0, maxCol: 0, minRow: 0, maxRow: 0 };
+}
+
+GeoJSONVectorTileProvider.prototype = {
+  constructor: GeoJSONVectorTileProvider,
+
+  /**
+   * 序列化参数对象
+   *
+   * @param {Object} params 参数对象
+   * @returns {String} 序列化字符串
+   */
+  _serialize: function (params) {
+    const queryArray = [];
+    const encode = window.encodeURIComponent;
+
+    for (let key in params) {
+      const value = params[key];
+
+      if (typeof value === "object") {
+        queryArray.push(encode(key) + "=" + encode(JSON.stringify(value)));
+      } else {
+        queryArray.push(encode(key) + "=" + encode(params[key]));
+      }
+    }
+
+    return queryArray.join("&amp;");
+  },
+
+  /**
+   * 模拟 fetch 接口
+   *
+   * @param {String} url 请求 URL
+   * @param {Object} [options] 选项
+   * @returns {Promise} 处理请求结果的 Promise
+   *
+   */
+  _fetch: function (url, options = {}) {
+    const promise = new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      xhr.open(options.method || "GET", url);
+
+      if (options.headers) {
+        for (let key in options.headers) {
+          xhr.setRequestHeader(key, options.headers[key]);
+        }
+      }
+
+      xhr.onload = () => {
+        if (xhr.readyState === 4 &amp;&amp; xhr.status === 200) {
+          try {
+            const json = JSON.parse(xhr.responseText);
+
+            resolve(json);
+          } catch (e) {
+            reject(new Error("INVALID RESPONSE"));
+          }
+        }
+      };
+
+      xhr.onerror = (e) => {
+        reject(e);
+      };
+
+      xhr.onloadend = (e) => {
+        if (e.target.status !== 200) {
+          reject(new Error(`[${e.target.status}]request failed: ${url}`));
+        }
+      };
+
+      xhr.send(options.body || null);
+    });
+
+    return promise;
+  },
+
+  /**
+   * 通过经纬度获取瓦片 X、Y 值 (WGS84)
+   *
+   * @param {Number[]} lonLat 经纬度
+   * @param {Number} level 地图缩放等级
+   * @returns {Number[]} 瓦片的 X、Y 值
+   */
+  _lonLatToTileInWGS84: function (lonLat, level) {
+    const [lon, lat] = lonLat;
+    const tileX = Math.floor((Math.pow(2, level) * (90 - lat)) / 180);
+    const tileY = Math.floor((Math.pow(2, level) * (180 + lon)) / 180);
+
+    return [tileX, tileY];
+  },
+
+  /**
+   * 弧度转角度
+   *
+   * @param {Number} radian 弧度值
+   * @returns {Number} 角度值
+   */
+  _radianToDegree: function (radian) {
+    return (radian / Math.PI) * 180;
+  },
+
+  /**
+   * 判断目标瓦片是否在数据范围内
+   *
+   * @param {QuadtreeTile} tile 瓦片对象
+   * @returns {Boolean} 瓦片是否在数据范围内
+   */
+  _isTileInRange: function (tile) {
+    try {
+      const { minCol, maxCol, minRow, maxRow } =
+        this._tileRangeByLevel[tile.level];
+      return (
+        tile.x >= minCol &amp;&amp;
+        tile.x &lt;= maxCol &amp;&amp;
+        tile.y >= minRow &amp;&amp;
+        tile.y &lt;= maxRow
+      );
+    } catch (e) {
+      return false;
+    }
+  },
+
+  /**
+   * 摄像机 moveStart 事件处理程序
+   */
+  _cameraMoveStartHandler: function () {
+    this._isCameraMoving = true;
+  },
+
+  /**
+   * 摄像机 moveEnd 事件处理程序
+   */
+  _cameraMoveEndHandler: function () {
+    const timestamp = Date.now();
+    let tilesToRender = this._viewer.scene.globe._surface._tilesToRender;
+    const levels = tilesToRender.map((tile) => tile.level);
+    const minLevel = Math.min(...levels);
+    const maxLevel = Math.max(...levels);
+
+    //这里处理的是视角渲染限制，前者是数据请求限制，相当于优化显示
+    if (maxLevel &lt; this._minimumLevel) {
+      tilesToRender = [];
+    }
+
+    //过滤太快的瓦片请求，跨度比较大
+    if (maxLevel - minLevel > 2) {
+      tilesToRender = tilesToRender.filter((tile) => {
+        return tile.level >= maxLevel - 2;
+      });
+    }
+
+    tilesToRender.sort((val1, val2) => -(val1.level - val2.level));
+    let tileshash = {};
+
+    var that = this;
+    let filtertilestorenderfunc = function (tile) {
+      if (tile.level &lt; that._minimumLevel) {
+        return undefined;
+      }
+      if (tile.level > that._maximumLevel) {
+        let nearestlevel =
+          tile.level > that._maximumLevel ? that._maximumLevel : tile.level;
+
+        let upx = Math.floor(
+          tile.x / Math.pow(2, tile.level - that._maximumLevel)
+        );
+        let upy = Math.floor(
+          tile.y / Math.pow(2, tile.level - that._maximumLevel)
+        );
+        const tileKey = "z" + nearestlevel + "x" + upx + "y" + upy;
+        tileshash[tileKey] = { level: nearestlevel, x: upx, y: upy };
+      } else {
+        const tileKey = "z" + tile.level + "x" + tile.x + "y" + tile.y;
+        tileshash[tileKey] = { level: tile.level, x: tile.x, y: tile.y };
+      }
+    };
+    tilesToRender.forEach((tile) => filtertilestorenderfunc(tile));
+    tilesToRender = Object.values(tileshash);
+    //如果不设置，有可能更高级别都没法看
+    // if (this._upperLevelLimit) {
+    //   tilesToRender = this._refineTiles(tilesToRender, this._upperLevelLimit);
+    // }
+
+    this._isCameraMoving = false;
+    this._moveEndTimestamp = timestamp;
+    this._tileKeys = [];
+
+    tilesToRender.forEach((tile) => {
+      const tileKey = "z" + tile.level + "x" + tile.x + "y" + tile.y;
+
+      this._tileKeys.push(tileKey);
+
+      if (this._primitiveByTile[tileKey]) {
+        return;
+      }
+
+      const tileUrl = this._urlTemplate
+        .replace("{x}", tile.x)
+        .replace("{y}", tile.y)
+        .replace("{z}", tile.level);
+
+      this._fetch(tileUrl)
+        .then((json) => {
+          if (this._isRemoved) throw new Error("DISCARD");
+          if (this._isCameraMoving) throw new Error("DISCARD");
+          if (timestamp !== this._moveEndTimestamp) throw new Error("DISCARD");
+          const primitive = handlegeojsontoprimitive(json, this._element);
+          if (primitive) {
+            //每个瓦片独立维护一个primitve确实是个不错的选择，如果使用enitity，内部一旦控制不好可能就会出现问题。这里需要重构geojsontoprimitive的代码
+            this._viewer.scene.primitives.add(primitive);
+          }
+          this._primitiveByTile[tileKey] = primitive;
+        })
+        .catch((ex) => {
+          if (ex.message !== "DISCARD") {
+          }
+        });
+    });
+
+    this._removeObsoletePrimitives(this._primitiveByTile, this._tileKeys);
+  },
+
+  /**
+   * 通过拆分、合并优化瓦片下载与渲染
+   *
+   * @param {Object[]} tiles 待处理的瓦片列表
+   * @param {Number} targetLevel 目标优化层级
+   * @returns {Object[]} 优化后的瓦片列表
+   */
+  _refineTiles: function (tiles, targetLevel) {
+    const newTiles = [];
+    const tileKeys = [];
+
+    tiles.forEach((tile) => {
+      const tileKey = "Z" + tile.level + "X" + tile.x + "Y" + tile.y;
+
+      if (tile.level &lt; targetLevel - 1) {
+        if (!tileKeys.includes(tileKey)) {
+          newTiles.push(tile);
+          tileKeys.push(tileKey);
+        }
+      } else if (tile.level === targetLevel - 1) {
+        for (let i = 0; i &lt; 2; i++) {
+          for (let j = 0; j &lt; 2; j++) {
+            const tileKey =
+              "Z" +
+              (tile.level + 1) +
+              "X" +
+              (tile.x * 2 + i) +
+              "Y" +
+              (tile.y * 2 + j);
+
+            if (!tileKeys.includes(tileKey)) {
+              newTiles.push({
+                x: tile.x * 2 + i,
+                y: tile.y * 2 + j,
+                level: tile.level + 1,
+              });
+              tileKeys.push(tileKey);
+            }
+          }
+        }
+      } else {
+        const levelDiff = tile.level - targetLevel;
+
+        if (levelDiff === 0) {
+          if (!tileKeys.includes(tileKey)) {
+            newTiles.push(tile);
+            tileKeys.push(tileKey);
+          }
+        } else {
+          const factor = levelDiff * 2;
+          const targetX = Math.floor(tile.x / factor);
+          const targetY = Math.floor(tile.y / factor);
+          const tileKey = "Z" + targetLevel + "X" + targetX + "Y" + targetY;
+
+          if (!tileKeys.includes(tileKey)) {
+            newTiles.push({ x: targetX, y: targetY, level: targetLevel });
+            tileKeys.push(tileKey);
+          }
+        }
+      }
+    });
+
+    return newTiles;
+  },
+
+  /**
+   *
+   *
+   * @param {Object} primitiveByTile 瓦片 primitive，以 tileKey 索引
+   * @param {String[]} tileKeys 当前有效的瓦片 keys
+   */
+  _removeObsoletePrimitives: function (primitiveByTile, tileKeys) {
+    for (let tileKey in primitiveByTile) {
+      if (!tileKeys.includes(tileKey)) {
+        const removed = this._viewer.scene.primitives.remove(
+          primitiveByTile[tileKey]
+        );
+
+        if (removed) {
+          delete primitiveByTile[tileKey];
+        } else {
+        }
+      }
+    }
+  },
+
+  /**
+   * 将 provider 添加到指定 viewer
+   *
+   * @param {Cesium.Viewer} viewer 目标 viewer
+   */
+  addTo: function (viewer) {
+    this._viewer = viewer;
+    this._isRemoved = false;
+    this._viewer.camera.moveEnd.addEventListener(this._cameraMoveEndHandler);
+    this._viewer.camera.moveStart.addEventListener(
+      this._cameraMoveStartHandler
+    );
+    this._cameraMoveEndHandler();
+  },
+
+  /**
+   * 移除 provider
+   */
+  remove: function () {
+    if (this._viewer) {
+      for (let tileKey in this._primitiveByTile) {
+        this._viewer.scene.primitives.remove(this._primitiveByTile[tileKey]);
+      }
+
+      this._primitiveByTile = {};
+      this._viewer.camera.moveEnd.removeEventListener(
+        this._cameraMoveEndHandler
+      );
+      this._viewer.camera.moveStart.removeEventListener(
+        this._cameraMoveStartHandler
+      );
+      this._viewer = null;
+      this._isRemoved = true;
+    }
+  },
+
+  /**
+   * provider 是否已移除
+   */
+  isRemoved: function () {
+    return this._isRemoved;
+  },
+
+  /**
+   * 添加属性过滤
+   *
+   * @param {string} property 要过滤的属性名称
+   * @param {any[]} values 要过滤的属性值
+   * @param {Cesium.Rectangle} [rectangle] 要过滤的数据范围
+   */
+  filterBy: function (property, values, rectangle) {
+    this._propertyToBeFiltered = property;
+    this._valuesToBeFiltered = values;
+  },
+
+  /**
+   * 移除属性过滤
+   */
+  removeFilter: function () {
+    this._propertyToBeFiltered = null;
+    this._valuesToBeFiltered = null;
+  },
+};
+
+export default GeoJSONVectorTileProvider;
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="Core.html">Core</a></li></ul><h3>Classes</h3><ul><li><a href="baseObject_baseObject.html">baseObject</a></li><li><a href="Cesium.Measure.html">Measure</a></li><li><a href="CesiumFlyManager.html">CesiumFlyManager</a></li><li><a href="CesiumNavigation.html">CesiumNavigation</a></li><li><a href="GeoJSONVectorTileProvider.html">GeoJSONVectorTileProvider</a></li><li><a href="Layer.html">Layer</a></li><li><a href="NavigationControl.html">NavigationControl</a></li><li><a href="PolygonStyle.html">PolygonStyle</a></li><li><a href="PolylineDashFullMaterialProperty.html">PolylineDashFullMaterialProperty</a></li><li><a href="ResetViewNavigationControl.html">ResetViewNavigationControl</a></li><li><a href="Tile3DLayer_Tile3DLayer.html">Tile3DLayer</a></li><li><a href="UserInterfaceControl.html">UserInterfaceControl</a></li><li><a href="VectorLayer_VectorLayer.html">VectorLayer</a></li><li><a href="ZoomOutNavigationControl.html">ZoomOutNavigationControl</a></li></ul><h3>Global</h3><ul><li><a href="global.html#combineIconAndLabel">combineIconAndLabel</a></li><li><a href="global.html#echartShowType">echartShowType</a></li><li><a href="global.html#hasText">hasText</a></li><li><a href="global.html#initialize">initialize</a></li><li><a href="global.html#mapHelper">mapHelper</a></li><li><a href="global.html#Snow">Snow</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.11</a> on Fri Sep 09 2022 18:10:01 GMT+0800 (中国标准时间)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

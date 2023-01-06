@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: cesium/postproccessstage/weatherpoststage.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: cesium/postproccessstage/weatherpoststage.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>/**
+ * 后期处理控制类
+ * postProcessController.js
+ */
+
+export const Snow = `
+ uniform sampler2D colorTexture; //输入的场景渲染照片
+ varying vec2 v_textureCoordinates;
+ uniform float snowSpeed;
+ uniform float snowSize;
+ 
+ float snow(vec2 uv, float scale) {
+     float time = czm_frameNumber / snowSpeed;
+     float w = smoothstep(1., 0., -uv.y * (scale / 10.));
+     if (w &lt; .1)
+         return 0.;
+     uv += time / scale;
+     uv.y += time * 2. / scale;
+     uv.x += sin(uv.y + time * .5) / scale;
+     uv *= scale;
+     vec2 s = floor(uv), f = fract(uv), p;
+     float k = 3., d;
+     p = .5 + .35 * sin(11. * fract(sin((s + p + scale) * mat2(7, 3, 6, 5)) * 5.)) - f;
+     d = length(p);
+     k = min(d, k);
+     k = smoothstep(0., k, sin(f.x + f.y) * snowSize);
+     return k * w;
+ }
+ 
+ void main(void) {
+     vec2 resolution = czm_viewport.zw;
+     vec2 uv = (gl_FragCoord.xy * 2. - resolution.xy) / min(resolution.x, resolution.y);
+     vec3 finalColor = vec3(0);
+     // float c=smoothstep(1.,0.3,clamp(uv.y*.3+.8,0.,.75));
+     float c = 0.0;
+     c += snow(uv, 30.) * .0;
+     c += snow(uv, 20.) * .0;
+     c += snow(uv, 15.) * .0;
+     c += snow(uv, 10.);
+     c += snow(uv, 8.);
+     c += snow(uv, 6.);
+     c += snow(uv, 5.);
+     finalColor = (vec3(c));                                                                      //屏幕上雪的颜色
+     gl_FragColor = mix(texture2D(colorTexture, v_textureCoordinates), vec4(finalColor, 1), 0.5); //将雪和三维场景融合
+ }
+ `;
+
+export const Rain = `
+ uniform sampler2D colorTexture; //输入的场景渲染照片
+ varying vec2 v_textureCoordinates;
+ uniform float tiltAngle;
+ uniform float rainSize;
+ uniform float rainSpeed;
+ float hash(float x) { return fract(sin(x * 133.3) * 13.13); }
+ 
+ void main(void) {
+ 
+     float time = czm_frameNumber / rainSpeed;
+     vec2 resolution = czm_viewport.zw;
+ 
+     vec2 uv = (gl_FragCoord.xy * 2. - resolution.xy) / min(resolution.x, resolution.y);
+     vec3 c = vec3(.6, .7, .8);
+ 
+     float a = tiltAngle;
+     float si = sin(a), co = cos(a);
+     uv *= mat2(co, -si, si, co);
+     uv *= length(uv + vec2(0, 4.9)) * rainSize + 1.;
+ 
+     float v = 1. - sin(hash(floor(uv.x * 100.)) * 2.);
+     float b = clamp(abs(sin(20. * time * v + uv.y * (5. / (2. + v)))) - .95, 0., 1.) * 20.;
+     c *= v * b; //屏幕上雨的颜色
+ 
+     gl_FragColor = mix(texture2D(colorTexture, v_textureCoordinates), vec4(c, 1), 0.5); //将雨和三维场景融合
+ }
+ `;
+
+export const Fog =
+  "uniform sampler2D colorTexture;\n\
+         uniform sampler2D depthTexture;\n\
+         uniform float visibility;\n\
+         uniform vec4 fogColor;\n\
+         varying vec2 v_textureCoordinates; \n\
+         void main(void) \n\
+         { \n\
+            vec4 origcolor = texture2D(colorTexture, v_textureCoordinates); \n\
+            float depth = czm_readDepth(depthTexture, v_textureCoordinates); \n\
+            vec4 depthcolor = texture2D(depthTexture, v_textureCoordinates); \n\
+            float f = visibility * (depthcolor.r - 0.3) / 0.2; \n\
+            if (f &lt; 0.0) f = 0.0; \n\
+            else if (f > 1.0) f = 1.0; \n\
+            gl_FragColor = mix(origcolor, fogColor, f); \n\
+         }\n";
+
+export function createSnowStage(options) {
+  let snowSize = Cesium.defaultValue(options.snowSize, 0.02); //最好小于0.02
+  let snowSpeed = Cesium.defaultValue(options.snowSpeed, 60.0);
+
+  var snow = new Cesium.PostProcessStage({
+    name: "czm_snow",
+    fragmentShader: Snow,
+    uniforms: {
+      snowSize: () => {
+        return snowSize;
+      },
+      snowSpeed: () => {
+        return snowSpeed;
+      },
+    },
+  });
+  return snow;
+}
+
+export function createRainStage(options) {
+  let tiltAngle = Cesium.defaultValue(options.tiltAngle, -0.6);
+  let rainSize = Cesium.defaultValue(options.rainSize, 0.3);
+  let rainSpeed = Cesium.defaultValue(options.rainSpeed, 60.0);
+
+  var rain = new Cesium.PostProcessStage({
+    name: "czm_rain",
+    fragmentShader: Rain,
+    uniforms: {
+      tiltAngle: () => {
+        return tiltAngle;
+      },
+      rainSize: () => {
+        return rainSize;
+      },
+      rainSpeed: () => {
+        return rainSpeed;
+      },
+    },
+  });
+  return rain;
+}
+
+export function createFogStage(options) {
+  let visibility = Cesium.defaultValue(options.visibility, 0.1);
+  let color = Cesium.defaultValue(
+    options.color,
+    new Cesium.Color(0.8, 0.8, 0.8, 0.5)
+  );
+
+  var fog = new Cesium.PostProcessStage({
+    name: "czm_fog",
+    fragmentShader: Fog,
+    uniforms: {
+      visibility: () => {
+        return visibility;
+      },
+      fogColor: () => {
+        return color;
+      },
+    },
+  });
+  return fog;
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="Core.html">Core</a></li></ul><h3>Classes</h3><ul><li><a href="baseObject_baseObject.html">baseObject</a></li><li><a href="Cesium.Measure.html">Measure</a></li><li><a href="CesiumFlyManager.html">CesiumFlyManager</a></li><li><a href="CesiumNavigation.html">CesiumNavigation</a></li><li><a href="GeoJSONVectorTileProvider.html">GeoJSONVectorTileProvider</a></li><li><a href="Layer.html">Layer</a></li><li><a href="NavigationControl.html">NavigationControl</a></li><li><a href="PolygonStyle.html">PolygonStyle</a></li><li><a href="PolylineDashFullMaterialProperty.html">PolylineDashFullMaterialProperty</a></li><li><a href="ResetViewNavigationControl.html">ResetViewNavigationControl</a></li><li><a href="Tile3DLayer_Tile3DLayer.html">Tile3DLayer</a></li><li><a href="UserInterfaceControl.html">UserInterfaceControl</a></li><li><a href="VectorLayer_VectorLayer.html">VectorLayer</a></li><li><a href="ZoomOutNavigationControl.html">ZoomOutNavigationControl</a></li></ul><h3>Global</h3><ul><li><a href="global.html#combineIconAndLabel">combineIconAndLabel</a></li><li><a href="global.html#echartShowType">echartShowType</a></li><li><a href="global.html#hasText">hasText</a></li><li><a href="global.html#initialize">initialize</a></li><li><a href="global.html#mapHelper">mapHelper</a></li><li><a href="global.html#Snow">Snow</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.11</a> on Fri Sep 09 2022 18:10:01 GMT+0800 (中国标准时间)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

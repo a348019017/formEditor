@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>JSDoc: Source: cesium/handlepointcluster.js</title>
+
+    <script src="scripts/prettify/prettify.js"> </script>
+    <script src="scripts/prettify/lang-css.js"> </script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <link type="text/css" rel="stylesheet" href="styles/prettify-tomorrow.css">
+    <link type="text/css" rel="stylesheet" href="styles/jsdoc-default.css">
+</head>
+
+<body>
+
+<div id="main">
+
+    <h1 class="page-title">Source: cesium/handlepointcluster.js</h1>
+
+    
+
+
+
+    
+    <section>
+        <article>
+            <pre class="prettyprint source linenums"><code>import domtoimage from "dom-to-image-more";
+
+let hashpin = {};
+const pinBuilder = new Cesium.PinBuilder();
+function getorCreatePin(num, iconsize) {
+  if (!hashpin[num]) {
+    hashpin[num] = pinBuilder
+      .fromText(num, Cesium.Color.BLUE, iconsize)
+      .toDataURL();
+  }
+  return hashpin[num];
+}
+
+function getorCreatePinEx(num, iconsize, iconpath) {
+  if (!hashpin[num]) {
+    return combineIconAndLabel(iconpath, num, iconsize);
+  }
+  return hashpin[num];
+}
+
+//处理点的聚类代码,这里传入的是datasource也就是说需要使用datasource进行加载type：geojsonX
+export function customStyle(dataSource, iconsize, rule) {
+  let removeListener;
+  // const pin250 = pinBuilder.fromText("250+", Cesium.Color.RED, 96).toDataURL();
+  // const pin200 = pinBuilder
+  //   .fromText("200+", Cesium.Color.ORANGE, 96)
+  //   .toDataURL();
+  // const pin150 = pinBuilder
+  //   .fromText("150+", Cesium.Color.YELLOW, 96)
+  //   .toDataURL();
+  // const pin100 = pinBuilder
+  //   .fromText("100+", Cesium.Color.GREEN, 96)
+  //   .toDataURL();
+  // const pin50 = pinBuilder.fromText("50+", Cesium.Color.BLUE, 96).toDataURL();
+  // const pin10 = pinBuilder.fromText("10+", Cesium.Color.BLUE, 96).toDataURL();
+  // const singleDigitPins = new Array(8);
+  // for (let i = 0; i &lt; singleDigitPins.length; ++i) {
+  //   singleDigitPins[i] = pinBuilder
+  //     .fromText(`${i + 2}`, Cesium.Color.VIOLET, 96)
+  //     .toDataURL();
+  // }
+  if (Cesium.defined(removeListener)) {
+    removeListener();
+    removeListener = undefined;
+  } else {
+    removeListener = dataSource.clustering.clusterEvent.addEventListener(
+      function (clusteredEntities, cluster) {
+        cluster.label.show = false;
+        cluster.billboard.show = true;
+        cluster.billboard.id = cluster.label.id;
+        cluster.billboard.verticalOrigin = Cesium.VerticalOrigin.BOTTOM;
+        cluster.billboard.heightReference =
+          Cesium.HeightReference.CLAMP_TO_GROUND;
+        var count = clusteredEntities.length;
+        if (rule) {
+          rule.forEach((r) => {
+            let min = r.min ? r.min : 0;
+            let max = r.max ? r.max : Number.MAX_VALUE;
+            if (count >= min &amp;&amp; count &lt; max) {
+              cluster.billboard.image = getorCreatePinEx(
+                count,
+                iconsize,
+                r.iconpath
+              );
+            }
+          });
+        } else {
+          cluster.billboard.image = getorCreatePin(
+            clusteredEntities.length,
+            iconsize
+          );
+        }
+      }
+    );
+  }
+}
+
+export function customStyleEx(dataSource, eles) {
+  let removeListener;
+  if (Cesium.defined(removeListener)) {
+    removeListener();
+    removeListener = undefined;
+  } else {
+    removeListener = dataSource.clustering.clusterEvent.addEventListener(
+      function (clusteredEntities, cluster) {
+        cluster.label.show = false;
+        cluster.billboard.show = true;
+        cluster.billboard.id = cluster.label.id;
+        cluster.billboard.verticalOrigin = Cesium.VerticalOrigin.BOTTOM;
+        cluster.billboard.heightReference =
+          Cesium.HeightReference.CLAMP_TO_GROUND;
+        if (clusteredEntities.length >= 250) {
+          cluster.billboard.image = pin250;
+        } else if (clusteredEntities.length >= 200) {
+          cluster.billboard.image = pin200;
+        } else if (clusteredEntities.length >= 150) {
+          cluster.billboard.image = pin150;
+        } else if (clusteredEntities.length >= 100) {
+          cluster.billboard.image = pin100;
+        } else if (clusteredEntities.length >= 50) {
+          cluster.billboard.image = pin50;
+        } else if (clusteredEntities.length >= 10) {
+          cluster.billboard.image = pin10;
+        } else {
+          cluster.billboard.image =
+            singleDigitPins[clusteredEntities.length - 2];
+        }
+      }
+    );
+  }
+}
+
+export function handlemypinbuilder(dataSource, element) {
+  if (element.customcluster &amp;&amp; element.customcluster.enabled) {
+    let templates = element.customcluster.templates;
+
+    let results = templates.map((ele) => {
+      let oDiv = document.createElement("div");
+      oDiv.innerHTML = templates[key].div;
+      document.append(oDiv);
+
+      return domtoimage
+        .toPng(oDiv)
+        .then(function (dataUrl) {
+          ele.dataurl = dataurl;
+          resolve(ele);
+        })
+        .catch(function (error) {
+          console.error("oops, something went wrong!", error);
+        });
+    });
+
+    Promise.all(results).then((eles) => {
+      //开始处理cluster的顶图
+    });
+  }
+}
+
+//处理点的数cluster处理
+export function handlepointsloadbygeojson(dataSource, element) {
+  if (element.cluster) {
+    dataSource.clustering.enabled = true;
+    dataSource.clustering.pixelRange = element.cluster.pixelRange
+      ? element.cluster.pixelRange
+      : 100;
+    dataSource.clustering.minimumClusterSize = element.cluster
+      .minimumClusterSize
+      ? element.cluster.minimumClusterSize
+      : 10;
+    let iconsize = element.cluster.iconsize ? element.cluster.iconsize : 96;
+    customStyle(dataSource, iconsize, element.cluster.rule);
+  } else {
+    //移除cluster
+  }
+}
+
+/**
+ * @description: 将图片和文字合成新图标使用（参考Cesium源码）
+ * @param {*} url：图片地址
+ * @param {*} label：文字
+ * @param {*} size：画布大小
+ * @return {*} 返回canvas
+ */
+function combineIconAndLabel(url, label, size) {
+  // 创建画布对象
+  let canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  let ctx = canvas.getContext("2d");
+
+  let promise = new Cesium.Resource.fetchImage(url).then((image) => {
+    // 异常判断
+    try {
+      ctx.drawImage(image, 0, 0, size, size);
+    } catch (e) {
+      console.log(e);
+    }
+    // 渲染字体
+    // font属性设置顺序：font-style, font-variant, font-weight, font-size, line-height, font-family
+    ctx.fillStyle = Cesium.Color.WHITE.toCssColorString();
+    ctx.font = "bold 20px Microsoft YaHei";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, size / 2, size / 2);
+    hashpin[label] = canvas.toDataURL();
+    return canvas;
+  });
+  return promise;
+}
+</code></pre>
+        </article>
+    </section>
+
+
+
+
+</div>
+
+<nav>
+    <h2><a href="index.html">Home</a></h2><h3>Namespaces</h3><ul><li><a href="Core.html">Core</a></li></ul><h3>Classes</h3><ul><li><a href="baseObject_baseObject.html">baseObject</a></li><li><a href="Cesium.Measure.html">Measure</a></li><li><a href="CesiumFlyManager.html">CesiumFlyManager</a></li><li><a href="CesiumNavigation.html">CesiumNavigation</a></li><li><a href="GeoJSONVectorTileProvider.html">GeoJSONVectorTileProvider</a></li><li><a href="Layer.html">Layer</a></li><li><a href="NavigationControl.html">NavigationControl</a></li><li><a href="PolygonStyle.html">PolygonStyle</a></li><li><a href="PolylineDashFullMaterialProperty.html">PolylineDashFullMaterialProperty</a></li><li><a href="ResetViewNavigationControl.html">ResetViewNavigationControl</a></li><li><a href="Tile3DLayer_Tile3DLayer.html">Tile3DLayer</a></li><li><a href="UserInterfaceControl.html">UserInterfaceControl</a></li><li><a href="VectorLayer_VectorLayer.html">VectorLayer</a></li><li><a href="ZoomOutNavigationControl.html">ZoomOutNavigationControl</a></li></ul><h3>Global</h3><ul><li><a href="global.html#combineIconAndLabel">combineIconAndLabel</a></li><li><a href="global.html#echartShowType">echartShowType</a></li><li><a href="global.html#hasText">hasText</a></li><li><a href="global.html#initialize">initialize</a></li><li><a href="global.html#mapHelper">mapHelper</a></li><li><a href="global.html#Snow">Snow</a></li></ul>
+</nav>
+
+<br class="clear">
+
+<footer>
+    Documentation generated by <a href="https://github.com/jsdoc/jsdoc">JSDoc 3.6.11</a> on Fri Sep 09 2022 18:10:01 GMT+0800 (中国标准时间)
+</footer>
+
+<script> prettyPrint(); </script>
+<script src="scripts/linenumber.js"> </script>
+</body>
+</html>

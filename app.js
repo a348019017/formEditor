@@ -12,7 +12,7 @@ app.use(bodyparser.json())
 
 const upload = require('./upload.js');
 const sequelize = require('./models/dbcnn');
-
+const fs=require("fs")
 
 // //获取表单模板，暂不传递usrid，全局的,根据名称查询模板
 // app.get("/MoveMapApply/forms/getformstemplate", (req, res) => {
@@ -74,6 +74,8 @@ app.post("/uploadImage", (req, res) => {
 
 //使用静态目录
 app.use('/images',express.static(__dirname + '/images'))
+//使用静态目录
+app.use('/',express.static(__dirname + '/public'))
 
 //测试orm
 //提交表单内容到数据库中保存，这里尝试使用orm框架，sqlite
@@ -243,6 +245,33 @@ app.post("/MoveMapApply/forms/submitformData", async (req, res) => {
     });
 });
 
+app.get("/MoveMapApply/forms/initDb2", async (req, res) => {
+  //获取分页参数,在req.query中
+  //let pagesize=req.query.pagesize?req.query.pagesize:10;
+  //let pageindex=req.query.pageindex?req.query.pageindex:1;
+  //console.log("xx:"+JSON.stringify(req.query));
+  let rst = await sequelize.sync({
+      force: true,
+  }).catch(err=>{
+      res.send({
+          isok:false,
+          code:404,
+          err:err
+      })
+  });
+  //通过模板创建后再插入sql语句
+  //let t= sequelize.transaction().
+
+  //let sqltext= fs.readFileSync("./db/DictionaryData.sql").toString();
+
+  //然后创建模板表单
+  res.send({
+      isok:true,
+      code:200,
+      //data:rst
+  });
+});
+
 
 app.get("/MoveMapApply/forms/test", async (req, res) => {
     //获取分页参数,在req.query中
@@ -275,11 +304,10 @@ definedt.forEach(dt=>{
 });
 
 
-
 app.listen(port, () => {
   console.log(`Example app listening on port ${port}`);
-  var open = require('open');
-  open('http://localhost:8080/#/forms?group=tepgrp');
+  //var open = require('open');
+  //open('http://localhost:8080/#/forms?group=tepgrp');
 });
 
 
