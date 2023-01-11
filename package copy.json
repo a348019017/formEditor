@@ -1,5 +1,5 @@
 {
-  "name": "onemapapi",
+  "name": "onemapapi2",
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
@@ -8,6 +8,7 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "build": "pkg .",
+    
     "rollup:build": "rollup app.js --file bundle.js --format cjs   "
   },
   "author": "",
@@ -24,17 +25,14 @@
     "open": "^8.4.0",
     "pg": "^8.8.0",
     "pg-hstore": "^2.3.4",
-    "portfinder": "^1.0.32",
     "sequelize": "^6.28.0",
     "sharp": "^0.31.3",
     "sqlite3": "^5.1.4"
   },
   "bin": "./test.js",
   "pkg": {
-    "assets": "./node_modules/sharp/build/**",
-    "targets": [
-      "node14-win-x64"
-    ],
+    "assets": "./public/**/*",
+    "targets": [ "node14-win-x64" ],
     "outputPath": "dist"
   },
   "devDependencies": {

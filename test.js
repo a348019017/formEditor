@@ -59,17 +59,29 @@ let configexpfolder='D:/项目/5gpark/src/asset/全景照片/qindex1.json'
 }
 
 
-//获取js所在文件目录
+//获取js所在文件目录__dirname不再当前目录
 
-inputfolder=__dirname;
-outputfolder=__dirname;
-configfolder=path.join(__dirname,"qindex.json");
-configexpfolder=path.join(__dirname,"qindex1.json");
+inputfolder=process.cwd();
+outputfolder=process.cwd();
+configfolder=path.join(process.cwd(),"qindex.json");
+configexpfolder=path.join(process.cwd(),"qindex1.json");
+
+
+console.log(inputfolder);
+console.log(outputfolder);
+console.log(configfolder);
+console.log(configexpfolder);
+
 
 //添加标注到配置文件中
-function addmarkers(){
-    
+function addmarkers(pathname,filename,config){
+    //如果是文本
+    if(filename.endsWith(".txt")||filename.endsWith(".json"))
+    {
+        
+    }
 }
+
 
 
 //
@@ -93,7 +105,7 @@ function  proccessimage(dkname,ele,config){
             sharp(rpath)
               .metadata()
               .then((mt) => {
-                console.log(mt);
+                //console.log(mt);
               });
             for (let i = 0; i < rownum; i++) {
               for (let j = 0; j < columnnum; j++) {
@@ -202,8 +214,7 @@ function readgpsandwriteconfig(){
 }
 
 
-//console.log(process.env.HTTPS_PROXY);
-//readgpsandwriteconfig();
+readgpsandwriteconfig();
 
 
 

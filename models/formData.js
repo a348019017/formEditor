@@ -141,6 +141,11 @@ dictionaryData.init(
       type: DataTypes.STRING,
       // allowNull defaults to true
     },
+    //表示级联的情况，特殊处理
+    parent: {
+      type: DataTypes.INTEGER,
+      // allowNull defaults to true
+    },
   },
   {
     // Other model options go here

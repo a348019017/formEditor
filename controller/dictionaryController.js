@@ -34,7 +34,21 @@ let definedt = [
           err: err,
         });
       });
-     
+
+      // let newrst={};
+      // rst.forEach(rt=>{
+      //   newrst[rt.id]=rt;
+      // })
+      // //判断级联的情况
+      // rst.forEach((rt) => {
+      //   if (rt.parent) {
+      //     let tmp = newrst[rt.parent];        
+      //     if (!tmp.children) tmp.children = [];
+      //     tmp.children.push(rt);
+      //     newrst[rt.id] = undefined;
+      //   }
+      // });
+      // rst=Object.values(rst).filter(j=>j)
       res.send({
         isok: true,
         code: 200,

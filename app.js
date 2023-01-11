@@ -1,6 +1,7 @@
 const express = require('express')
 const app = express()
 const port = 8082
+const portfinder = require('portfinder')
 var cors = require('cors');
 const {User,formTemplate, formData}=require("./models/formData")
 const { QueryTypes } = require('sequelize');
@@ -12,7 +13,8 @@ app.use(bodyparser.json())
 
 const upload = require('./upload.js');
 const sequelize = require('./models/dbcnn');
-const fs=require("fs")
+const fs=require("fs");
+const { triggerAsyncId } = require('async_hooks');
 
 // //获取表单模板，暂不传递usrid，全局的,根据名称查询模板
 // app.get("/MoveMapApply/forms/getformstemplate", (req, res) => {
@@ -74,8 +76,8 @@ app.post("/uploadImage", (req, res) => {
 
 //使用静态目录
 app.use('/images',express.static(__dirname + '/images'))
-//使用静态目录
-app.use('/',express.static(__dirname + '/public'))
+//使用静态目录,打包成exe后换用其它的写法
+app.use('/',express.static(process.cwd() + '/public'))
 
 //测试orm
 //提交表单内容到数据库中保存，这里尝试使用orm框架，sqlite
@@ -304,10 +306,20 @@ definedt.forEach(dt=>{
 });
 
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`);
-  //var open = require('open');
-  //open('http://localhost:8080/#/forms?group=tepgrp');
-});
+
+//自动判断端口
+function startApp(){
+   portfinder.getPortPromise({
+    port: port
+  }).then(newport=>{
+    app.listen(newport, () => {
+      console.log(`Example app listening on port ${port}`);
+      //var open = require('open');
+      //open('http://localhost:8080/#/forms?group=tepgrp');
+    });
+  })
+}
+startApp();
+
 
 
