@@ -9,12 +9,13 @@ const rownum=4;
 const rowfbl=4096;
 const columnnum=8;
 const colfbl=8192;
+let isforecerebuild=false;
 
-let inputfolder="C:/Users/34801/Desktop/20221124成果/成果"
-let outputfolder="C:/Users/34801/Desktop/20221124成果/成果"
+let inputfolder="C:/Users/34801/Desktop/全景图02-22"
+let outputfolder="C:/Users/34801/Desktop/全景图02-22"
 //配置文件所在目录
-let configfolder='D:/项目/5gpark/src/asset/全景照片/qindex.json'
-let configexpfolder='D:/项目/5gpark/src/asset/全景照片/qindex1.json'
+let configfolder='C:/Users/34801/Desktop/全景图02-22/qindex.json'
+let configexpfolder='C:/Users/34801/Desktop/全景图02-22/qindex1.json'
  function test(){
     //遍历目录中的图片
     var pa = fs.readdirSync(inputfolder);
@@ -59,13 +60,13 @@ let configexpfolder='D:/项目/5gpark/src/asset/全景照片/qindex1.json'
 }
 
 
-//获取js所在文件目录__dirname不再当前目录
 
-inputfolder=process.cwd();
-outputfolder=process.cwd();
-configfolder=path.join(process.cwd(),"qindex.json");
-configexpfolder=path.join(process.cwd(),"qindex1.json");
-
+  //获取js所在文件目录__dirname不再当前目录
+  inputfolder = process.cwd();
+  outputfolder = process.cwd();
+  configfolder = path.join(process.cwd(), "qindex.json");
+  configexpfolder = path.join(process.cwd(), "qindex1.json");
+  console.log("isbuildmode")
 
 console.log(inputfolder);
 console.log(outputfolder);
@@ -74,15 +75,39 @@ console.log(configexpfolder);
 
 
 //添加标注到配置文件中
-function addmarkers(pathname,filename,config){
+function addmarkers(dkname, filename, config) {
+  try {
     //如果是文本
-    if(filename.endsWith(".txt")||filename.endsWith(".json"))
-    {
-        
+    if (filename.endsWith(".JPG")) {
+      let imagefilename = filename.replace(".JPG", "");
+      let rpath = inputfolder + "/" + dkname + "/" + imagefilename+".txt";
+      if(!fs.existsSync(rpath)) 
+      return;
+      let marks = fs.readFileSync(rpath).toString();
+      marks=marks.replace("markers: ","")
+      marks = JSON.parse(marks);
+      //遍历polygon修改为polygon
+      marks.forEach(m=>{
+        if(m.polygon)
+        {
+          m.polygonRad=m.polygon;
+          delete m['polygon'] ;
+          m.svgStyle.fill="rgba(189, 195, 200,0.5)"         ;   
+        }
+  
+        if(m.position)
+        {
+          m.longitude=m.position.yaw;
+          m.latitude=m.position.pitch;
+          delete m['position'] ;
+        }
+      })
+      config.markers=marks;
     }
+  } catch (err) {
+    console.log(filename + "add marker error"+err);
+  }
 }
-
-
 
 //
 function  proccessimage(dkname,ele,config){
@@ -159,9 +184,11 @@ function  proccessimage(dkname,ele,config){
             }      
             //默认采用瓦片
             selectedimage.usetile=true;      
+            addmarkers(dkname,ele,selectedimage)
         })
         return tags;   
     }
+   // addmarkers(dkname,ele,config);
 }
 
 

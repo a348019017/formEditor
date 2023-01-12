@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node app.js",
     "dev": "nodemon app.js",
-    "build": "pkg .",
+    "build": "set IS_BUILD_MODE=1 && pkg .  --debug",
     "rollup:build": "rollup app.js --file bundle.js --format cjs   "
   },
   "author": "",
