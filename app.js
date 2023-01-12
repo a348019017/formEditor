@@ -1,6 +1,6 @@
 const express = require('express')
 const app = express()
-const port = 8082
+const port = 8081
 const portfinder = require('portfinder')
 var cors = require('cors');
 const {User,formTemplate, formData}=require("./models/formData")
@@ -105,6 +105,7 @@ app.get("/MoveMapApply/forms/getformData", async (req, res) => {
   let pageindex = req.query.pageindex ? req.query.pageindex : 1;
   let group = req.query.group ? req.query.group : "";
   let userid = req.query.userid ? req.query.userid : "";
+  let templatename = req.query.userid ? req.query.userid : "";
   let queryparmas={
     offset: (pageindex - 1) * pagesize,
     limit: pagesize,
@@ -313,7 +314,7 @@ function startApp(){
     port: port
   }).then(newport=>{
     app.listen(newport, () => {
-      console.log(`Example app listening on port ${port}`);
+      console.log(`Example app listening on port ${newport}`);
       //var open = require('open');
       //open('http://localhost:8080/#/forms?group=tepgrp');
     });
