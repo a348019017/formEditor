@@ -1,6 +1,8 @@
 const express = require('express')
 const app = express()
-const port = 8081
+const port = 8084;
+const https=require("https")
+const httpsport = 8070;
 const portfinder = require('portfinder')
 var cors = require('cors');
 const {User,formTemplate, formData}=require("./models/formData")
@@ -14,7 +16,16 @@ app.use(bodyparser.json())
 const upload = require('./upload.js');
 const sequelize = require('./models/dbcnn');
 const fs=require("fs");
-const { triggerAsyncId } = require('async_hooks');
+var swaggerInstall = require("./swaggerinstall");
+const path = require('path');
+swaggerInstall(app);
+
+
+var options = {
+  key:fs.readFileSync('./ssl/ponggis.xyz.key'),
+  cert:fs.readFileSync('./ssl/ponggis.xyz_bundle.crt')
+}
+let server = https.createServer(options,app);
 
 // //获取表单模板，暂不传递usrid，全局的,根据名称查询模板
 // app.get("/MoveMapApply/forms/getformstemplate", (req, res) => {
@@ -23,7 +34,35 @@ const { triggerAsyncId } = require('async_hooks');
 //   res.send(JSON.stringify(defaultschema.defaultschema));
 // });
 
-//根据分组名称获取模板组
+
+/**,
+ * @swagger
+ * /MoveMapApply/forms/getformstemplatebygroup:
+ *    get:
+ *      tags:
+ *      - 
+ *      summary: 通过模板组名称获取模板
+ *      produces:
+ *      - application/json
+ *      parameters:
+ *      - name: group
+ *        in: query
+ *        description: 模板分组名称(实例tepgrp)
+ *        required: false
+ *        type: string
+ *        maximum:
+ *        minimum: 1
+ *        format:
+ *      responses:
+ *        200:
+ *          description: successful operation
+ *          schema:
+ *            ref: #/definitions/Order
+ *        400:
+ *          description: Invalid ID supplied
+ *        404:
+ *          description: Order not found
+ * */
 app.get("/MoveMapApply/forms/getformstemplatebygroup",async (req, res) => {
   let params = req.query;
   let group = params.group;
@@ -79,27 +118,48 @@ app.use('/images',express.static(__dirname + '/images'))
 //使用静态目录,打包成exe后换用其它的写法
 app.use('/',express.static(process.cwd() + '/public'))
 
-//测试orm
-//提交表单内容到数据库中保存，这里尝试使用orm框架，sqlite
-app.get("/MoveMapApply/forms/createformData", async (req, res) => {
-  try {
-    let rst = await sequelize.query(
-      `select json('{"first":"test", "second":"haha"}') as rst`,
-      { type: QueryTypes.SELECT }
-    );
-    if (rst.length > 0) {
-      //这里自动转换成json
-      res.send(rst[0].rst);
-    }
-      //return rst[0];
-    //const jane = await User.create({ firstName: "Jane" });
-    //console.log(JSON.stringify(rst));
-  } catch (error) {
-    res.send("Unable to connect to the database:", error);
-  }
-});
-
-//通过Id或name获取表单数据，同时返回template数据便于前端渲染。接口包含group
+/**,
+ * @swagger
+ * /MoveMapApply/forms/getformData:
+ *    get:
+ *      tags:
+ *      - 
+ *      summary: 通过Id或name获取表单数据，同时返回template数据便于前端渲染。接口包含group
+ *      produces:
+ *      - application/json
+ *      parameters:
+ *      - name: pagesize
+ *        in: query
+ *        description: 分页
+ *        required: false
+ *        type: integer
+ *        maximum: 1000
+ *        minimum: 1
+ *        format:
+ *      - name: pageindex
+ *        in: query
+ *        description: 分页
+ *        required: false
+ *        type: integer
+ *        maximum: 1000
+ *        minimum: 1
+ *        format:
+ *      - name: group
+ *        in: query
+ *        description: 表单的分组名（可以作为ID处理）
+ *        required: false
+ *        type: string
+ *        format:
+ *      responses:
+ *        200:
+ *          description: successful operation
+ *          schema:
+ *            ref: #/definitions/Order
+ *        400:
+ *          description: Invalid ID supplied
+ *        404:
+ *          description: Order not found
+ * */
 app.get("/MoveMapApply/forms/getformData", async (req, res) => {
   let pagesize = req.query.pagesize ? req.query.pagesize : 10;
   let pageindex = req.query.pageindex ? req.query.pageindex : 1;
@@ -314,11 +374,16 @@ function startApp(){
     port: port
   }).then(newport=>{
     app.listen(newport, () => {
-      console.log(`Example app listening on port ${newport}`);
+      console.log(`Example HTTP app listening on port ${newport}`);
       //var open = require('open');
       //open('http://localhost:8080/#/forms?group=tepgrp');
     });
   })
+
+  server.listen(httpsport, () => {
+    console.info(`Example HTTPS app listening on port ${httpsport}`)
+  })
+
 }
 startApp();
 
