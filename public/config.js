@@ -4,5 +4,5 @@ window.BaseUrl = ""//服务器"http://10.254.251.224:8021"//王琦林代理"http
 window.BaseUrl2= ""
 
 window.defaultValues={
-  num:"1234567890"
+  uid:"1234567890"
 };
