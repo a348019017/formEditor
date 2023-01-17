@@ -8,7 +8,6 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "build": "pkg .",
-    
     "rollup:build": "rollup app.js --file bundle.js --format cjs   "
   },
   "author": "",
@@ -29,11 +28,11 @@
     "sharp": "^0.31.3",
     "sqlite3": "^5.1.4"
   },
-  "bin": "./test.js",
+  "bin": "./app.js",
   "pkg": {
     "assets": "./public/**/*",
     "targets": [ "node14-win-x64" ],
-    "outputPath": "dist"
+    "outputPath": "dist2"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^24.0.0",
