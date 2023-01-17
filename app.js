@@ -86,6 +86,123 @@ app.get("/MoveMapApply/forms/getformstemplatebygroup",async (req, res) => {
 });
 
 
+/**
+ *  @swagger
+ * /MoveMapApply/forms/getformstemplateall:
+ *    get:
+ *      tags:
+ *      - 
+ *      summary: 获取全部模板
+ *      produces:
+ *      - application/json
+ *      parameters:
+ *      - name: group
+ *        in: query
+ *        description: 模板分组名称(实例tepgrp)
+ *        required: false
+ *        type: string
+ *        maximum:
+ *        minimum: 1
+ *        format:
+ *      responses:
+ *        200:
+ *          description: successful operation
+ *          schema:
+ *            ref: #/definitions/Order
+ *        400:
+ *          description: Invalid ID supplied
+ *        404:
+ *          description: Order not found
+ */
+app.get("/MoveMapApply/forms/getformstemplateall",async (req, res) => {
+  let params = req.query;
+  let group = params.group;
+  let rst = await formTemplate.findAll({
+     
+  }).catch(err=>{
+     res.send({
+      isok: false,
+      code: 404,
+      err: err,
+    });
+  });
+
+  let rtt={};
+   rst
+    .filter((r) => r.group)
+    .forEach((r) => {
+      if (!rtt[r.group]) {
+        rtt[r.group]={};
+        rtt[r.group].children = [];
+        rtt[r.group].name = r.group;
+        rtt[r.group].title = r.group;
+        rtt[r.group].id = r.group;
+      }
+      rtt[r.group].children.push(r);
+    });
+  rst=Object.values(rtt)
+
+  let rrst = {
+    isok: true,
+    code: 200,
+    data: rst,
+  };
+  res.send(rrst);
+});
+
+
+/**
+ *  @swagger
+ * /MoveMapApply/forms/saveformstemplate:
+ *    get:
+ *      tags:
+ *      - 
+ *      summary: 保存模板
+ *      produces:
+ *      - application/json
+ *      parameters:
+ *      - name: group
+ *        in: query
+ *        description: 模板分组名称(实例tepgrp)
+ *        required: false
+ *        type: string
+ *        maximum:
+ *        minimum: 1
+ *        format:
+ *      responses:
+ *        200:
+ *          description: successful operation
+ *          schema:
+ *            ref: #/definitions/Order
+ *        400:
+ *          description: Invalid ID supplied
+ *        404:
+ *          description: Order not found
+ */
+app.post("/MoveMapApply/forms/saveformstemplate", async (req, res) => {
+  let params = req.body;
+  let alltask = params.map((i) => {
+    return formTemplate.upsert(i);
+  });
+
+  Promise.all(alltask)
+    .then((tt) => {
+      res.send({
+        isok: true,
+        code: 200,
+      });
+    })
+    .catch((err) => {
+      res.send({
+        isok: false,
+        code: 404,
+        err: err,
+      });
+    });
+});
+
+
+
 // //提交表单内容到数据库中保存，这里尝试使用orm框架，sqlite
 // app.get("/MoveMapApply/forms/saveforms", (req, res) => {
 //   res.send(JSON.stringify(defaultschema.defaultschema));
