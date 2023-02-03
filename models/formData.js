@@ -155,9 +155,37 @@ dictionaryData.init(
 );
 
 
+/**
+ * 数据字典,通过type字段进行分组
+ */
+class PolygonData extends Model {};
+
+PolygonData.init(
+  {
+    // Model attributes are defined here
+    name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
+    geometry: {
+      type: DataTypes.GEOMETRY('POLYGONZ', 4326),
+      allowNull: false,
+      //type: DataTypes.TEXT
+      // allowNull defaults to true
+    },
+  },
+  {
+    // Other model options go here
+    sequelize, // We need to pass the connection instance
+    modelName: "testpolygon", // We need to choose the model name
+  }
+);
+
+
+
 
 formTemplate.hasOne(formData);
 formData.belongsTo(formTemplate);
 
-module.exports ={User,formTemplate,formData,dictionaryData} ;
+module.exports ={User,formTemplate,formData,dictionaryData,PolygonData} ;
 

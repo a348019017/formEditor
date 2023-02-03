@@ -10,7 +10,7 @@ const sequelize = new Sequelize({
   port:5433,
   password:"postgres",
   username:"postgres",
-  database:"bim",
+  database:"bim2",
   schema:"public"
 });
 

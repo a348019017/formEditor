@@ -5,7 +5,7 @@ const https=require("https")
 const httpsport = 8070;
 const portfinder = require('portfinder')
 var cors = require('cors');
-const {User,formTemplate, formData}=require("./models/formData")
+const {User,formTemplate, formData,PolygonData}=require("./models/formData")
 const { QueryTypes } = require('sequelize');
 const bodyparser= require("body-parser")
 const {definedt}=require("./controller/dictionaryController")
@@ -477,11 +477,65 @@ app.get("/MoveMapApply/forms/test", async (req, res) => {
 
 
 
+//测试保存geojson格式数据的接口
+app.post("/MoveMapApply/forms/savegeojson", async (req, res) => {
+  //获取分页参数,在req.query中
+  let frmdt = req.body;
+  console.log(frmdt);
+  let rst = await PolygonData.upsert(frmdt).catch(err=>{
+      res.send({
+          isok:false,
+          code:404,
+          err:err
+      })
+  });
+  //然后创建模板表单
+  res.send({
+      isok:true,
+      code:200,
+      //data:rst
+  });
+});
+
+
+//间距分析接口
+app.post("/MoveMapApply/forms/jjanalys", async (req, res) => {
+  //获取分页参数,在req.query中
+  let frmdt = req.body;
+  //默认10m的间距
+  let distance=frmdt.maxdistance?frmdt.maxdistance:100;
+  //约5度
+  let azimuth=frmdt.azimuthoffset?frmdt.azimuthoffset:0.1;
+  //返回的polyline具有3d坐标可以考虑在前端处理，也可以后端处理
+  let baseheight=frmdt.azimuthoffset?frmdt.azimuthoffset:0.1;
+  
+  let sql=`
+  with rst as ( select a.id as aid,b.id as bid,st_shortestline(a.geometry, b.geometry) as geometry,round(st_length(st_shortestline(a.geometry, b.geometry)::geography)::numeric,2) as length  from  testpolygons a  LEFT JOIN testpolygons b on  b.id>a.id  ),
+  rst2 as( select *, st_azimuth(st_pointn(t.geometry, 1)::geography ,st_pointn(t.geometry, 2)::geography) as azimuth from rst t where t.length<=${distance} ORDER BY t.length asc  )
+  select row_number() over (order by length) as id,* from rst2 where abs(azimuth)<${azimuth}
+  `
+  let rst = await sequelize.query(sql).catch(err=>{
+      res.send({
+          isok:false,
+          code:404,
+          err:err
+      })
+  });
+  //然后创建模板表单
+  res.send({
+      isok:true,
+      code:200,
+      data:rst[0]
+  });
+});
+
 
 //映射数据字典的控制器
 definedt.forEach(dt=>{
   app[dt.type](dt.url,dt.func);
 });
+
+
 
 
 
